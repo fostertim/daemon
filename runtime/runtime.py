@@ -2,10 +2,13 @@ import subprocess, signal, sys
 from ansible import Ansible
 import threading
 import time
+
 from grizzly import *
 #from api import Robot
 #from api import Gamepads
-
+from api import hibike
+from api import deviceContext
+import time
 
 dawn_ansible = Ansible('dawn')
 runtime_ansible = Ansible('runtime')
@@ -27,7 +30,6 @@ runtime_ansible = Ansible('runtime')
 #peripheral_thread.start()
 
 running_code = False
-
 
 pobs = set() # set of all active processes
 pobslock = threading.Lock()  # Ensures that only one processs modifies pobs at a time
@@ -53,11 +55,23 @@ def p_watch(p):
     with pobslock:
         pobs.remove(p)
 
+context = deviceContext.DeviceContext()
+h = hibike.Hibike(context)
+connectedDevices = h.getEnumeratedDevices()
+context.subToDevices(connectedDevices)
+
+def get_all_data(connectedDevices):
+
+    all_data = {}
+    for t in connectedDevices:
+        all_data[t[0]] = context.getData(t[0],"dataUpdate")
+#    print(all_data)
+    return all_data
 
 while True:
-    command = dawn_ansible.recv() 
+    command = dawn_ansible.recv()
     if command:
-        print("Message received from ansible! " + command['header']['msg_type'])
+        #print("Message received from ansible! " + command['header']['msg_type'])
         msg_type, content = command['header']['msg_type'], command['content']
         if msg_type == 'execute':
 	    print("Ansible said to start the code")
@@ -75,7 +89,7 @@ while True:
             if running_code:
                 with pobslock:
                     print("killed")
-                    for p in pobs: 
+                    for p in pobs:
                         p.terminate() #ideal way to shut down
                         #p.kill()
                     pobs.clear()
@@ -86,3 +100,5 @@ while True:
                 running_code = False
         elif msg_type == 'gamepad':
             runtime_ansible.send(command)
+        runtime_ansible.send_message("sensor_value",get_all_data(connectedDevices))
+
